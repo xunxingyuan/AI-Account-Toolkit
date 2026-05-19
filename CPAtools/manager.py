@@ -436,6 +436,7 @@ class ChatGPTManager:
             otp_resp = s.post(
                 "https://auth.openai.com/api/accounts/email-otp/send",
                 headers={
+                    "accept": "application/json",
                     "openai-sentinel-token": sentinel2,
                     "content-type": "application/json",
                     "origin": "https://auth.openai.com",
