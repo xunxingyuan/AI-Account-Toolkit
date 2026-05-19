@@ -345,32 +345,58 @@ class ChatGPTManager:
             self.log(f"[!] 上传 Token 失败: {e}")
             return False
 
-    def _get_dynamic_proxy(self):
+    def _get_dynamic_proxies(self, limit=5):
         api_key = os.getenv("PROXIFLY_API_KEY")
         if not api_key or api_key == "your_proxifly_api_key_here":
-            return self.proxy
+            return [self.proxy] if self.proxy else []
         
         try:
-            self.log("[*] 正在向 Proxifly 请求新的代理 IP...")
-            # 注意: 请根据 proxifly.dev 实际的 API 端点和参数格式进行微调
-            url = f"https://api.proxifly.dev/get-proxy?apiKey={api_key}&format=text&protocol=http"
+            self.log(f"[*] 正在向 Proxifly 请求新的代理 IP (目标获取 {limit} 个)...")
+            # 添加 quantity 参数获取多个代理
+            url = f"https://api.proxifly.dev/get-proxy?apiKey={api_key}&format=text&protocol=http&quantity={limit}"
             resp = requests.get(url, timeout=10)
             
+            proxies = []
             if resp.status_code == 200 and ":" in resp.text:
-                proxy_str = resp.text.strip().split('\n')[0]
-                if not proxy_str.startswith("http"):
-                    proxy_str = f"http://{proxy_str}"
-                self.log(f"[*] 成功获取 Proxifly 动态代理: {proxy_str}")
-                return proxy_str
+                for line in resp.text.strip().split('\n'):
+                    proxy_str = line.strip()
+                    if proxy_str:
+                        if not proxy_str.startswith("http"):
+                            proxy_str = f"http://{proxy_str}"
+                        proxies.append(proxy_str)
+                
+                self.log(f"[*] 成功获取 Proxifly 动态代理: {len(proxies)} 个")
+                return proxies[:limit]
             else:
                 self.log(f"[!] Proxifly 返回异常 (状态码: {resp.status_code}): {resp.text[:100]}")
         except Exception as e:
             self.log(f"[!] 获取 Proxifly 代理失败: {e}")
             
-        return self.proxy
+        return [self.proxy] if self.proxy else []
 
     def register_one(self):
-        current_proxy = self._get_dynamic_proxy()
+        proxies_list = self._get_dynamic_proxies()
+        if not proxies_list:
+            proxies_list = [None] # 如果没有任何代理，至少尝试一次直连
+            
+        for idx, current_proxy in enumerate(proxies_list):
+            if current_proxy:
+                self.log(f"\n[*] === 开始第 {idx+1}/{len(proxies_list)} 次尝试，使用代理: {current_proxy} ===")
+            else:
+                self.log(f"\n[*] === 开始第 {idx+1}/{len(proxies_list)} 次尝试，直连无代理 ===")
+                
+            try:
+                result = self._attempt_registration(current_proxy)
+                if result:
+                    return result
+                self.log(f"[!] 当前尝试失败，准备切换下一个代理...")
+            except Exception as e:
+                self.log(f"[!] 代理执行过程出现致命异常: {e}")
+                
+        self.log("[!] 所有获取到的代理均尝试失败")
+        return None
+
+    def _attempt_registration(self, current_proxy):
         proxies = {"http": current_proxy, "https": current_proxy} if current_proxy else None
         s = requests.Session(proxies=proxies, impersonate="chrome120")
         s.headers.update({"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
