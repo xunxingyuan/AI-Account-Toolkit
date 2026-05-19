@@ -346,31 +346,45 @@ class ChatGPTManager:
             return False
 
     def _get_dynamic_proxies(self, limit=5):
-        api_key = os.getenv("PROXIFLY_API_KEY")
-        if not api_key or api_key == "your_proxifly_api_key_here":
-            return [self.proxy] if self.proxy else []
-        
-        try:
-            self.log(f"[*] 正在向 Proxifly 请求新的代理 IP (目标获取 {limit} 个)...")
-            # 添加 quantity 参数获取多个代理
-            url = f"https://api.proxifly.dev/get-proxy?apiKey={api_key}&format=text&protocol=http&quantity={limit}"
-            resp = requests.get(url, timeout=10)
-            
-            proxies = []
-            if resp.status_code == 200 and ":" in resp.text:
-                for line in resp.text.strip().split('\n'):
-                    proxy_str = line.strip()
-                    if proxy_str:
-                        if not proxy_str.startswith("http"):
-                            proxy_str = f"http://{proxy_str}"
-                        proxies.append(proxy_str)
-                
-                self.log(f"[*] 成功获取 Proxifly 动态代理: {len(proxies)} 个")
-                return proxies[:limit]
-            else:
-                self.log(f"[!] Proxifly 返回异常 (状态码: {resp.status_code}): {resp.text[:100]}")
-        except Exception as e:
-            self.log(f"[!] 获取 Proxifly 代理失败: {e}")
+        now = time.time()
+        # 初始化缓存属性
+        if not hasattr(self, "_cached_us_proxies"):
+            self._cached_us_proxies = []
+            self._last_proxy_fetch = 0
+
+        # 每 3 分钟更新一次本地代理列表缓存，避免频繁向 GitHub 请求导致被封
+        if not self._cached_us_proxies or (now - self._last_proxy_fetch > 180):
+            try:
+                self.log("[*] 正在从皮卡丘代理站获取最新代理 JSON 并筛选美国 (US) 节点...")
+                url = "https://charlespikachu.github.io/freeproxy/proxies.json"
+                # 不设置代理去获取代理列表，防套路
+                resp = requests.get(url, timeout=10)
+                if resp.status_code == 200:
+                    parsed = resp.json()
+                    raw_data = parsed.get("data", [])
+                    
+                    us_list = []
+                    for item in raw_data:
+                        country = str(item.get("country", "")).upper()
+                        proto = str(item.get("protocol", "")).lower()
+                        if country == "US" and ("http" in proto):
+                            ip = item.get("ip")
+                            port = item.get("port")
+                            us_list.append(f"http://{ip}:{port}")
+                            
+                    self._cached_us_proxies = us_list
+                    self._last_proxy_fetch = now
+                    self.log(f"[+] 成功加载并筛选出 {len(us_list)} 个 HTTP/HTTPS 美国代理")
+                else:
+                    self.log(f"[!] 获取皮卡丘代理失败 (状态码: {resp.status_code})")
+            except Exception as e:
+                self.log(f"[!] 解析皮卡丘代理列表失败: {e}")
+
+        if self._cached_us_proxies:
+            # 从候选池中随机无重复抽样，确保高频率 IP 更换
+            sampled = random.sample(self._cached_us_proxies, min(limit, len(self._cached_us_proxies)))
+            self.log(f"[*] 从候选池中随机挑选 {len(sampled)} 个美国代理用于本次注册")
+            return sampled
             
         return [self.proxy] if self.proxy else []
 
