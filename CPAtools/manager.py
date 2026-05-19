@@ -430,25 +430,34 @@ class ChatGPTManager:
                 data=signup_body,
             )
             self.log(f"[*] 注册 Continue 状态: {cont_resp.status_code}")
+            if cont_resp.text:
+                self.log(f"[*] 注册 Continue 响应: {cont_resp.text[:500]}")
             if cont_resp.status_code >= 400:
                 self.log(f"[!] 注册 Continue 失败响应: {cont_resp.text[:500]}")
 
+            # 打印当前 cookies 用于诊断
+            self.log(f"[*] 当前 Cookies: {dict(s.cookies)}")
+
             # 6. Password (需要携带 sentinel token，完成设置密码步骤)
             password = _generate_password()
+            self.log(f"[*] 生成密码: {password}")
             register_headers = {
                 "openai-sentinel-token": sentinel,
                 "referer": "https://auth.openai.com/create-account/password",
                 "accept": "application/json",
                 "content-type": "application/json",
             }
+            reg_payload = json.dumps({"password": password, "username": email})
+            self.log(f"[*] 注册请求体: {reg_payload}")
             reg_resp = s.post(
                 "https://auth.openai.com/api/accounts/user/register",
                 headers=register_headers,
-                data=json.dumps({"password": password, "username": email}),
+                data=reg_payload,
             )
             self.log(f"[*] 密码注册状态: {reg_resp.status_code}")
+            self.log(f"[*] 密码注册响应: {reg_resp.text[:500]}")
             if reg_resp.status_code >= 400:
-                self.log(f"[!] 密码注册失败响应: {reg_resp.text[:500]}")
+                self.log(f"[!] 密码注册失败，尝试检查 Continue 响应中的流程提示")
                 return None
 
             # 7. Send OTP (GET 请求，复用 register_headers 中的 sentinel token)
