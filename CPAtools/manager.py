@@ -418,6 +418,8 @@ class ChatGPTManager:
             # 7. Send OTP
             otp_resp = s.get("https://auth.openai.com/api/accounts/email-otp/send")
             self.log(f"[*] 发送验证码状态: {otp_resp.status_code}")
+            if otp_resp.text:
+                self.log(f"[*] 发送验证码响应: {otp_resp.text[:500]}")
             if otp_resp.status_code >= 400:
                 self.log(f"[!] 发送验证码失败响应: {otp_resp.text[:500]}")
 
