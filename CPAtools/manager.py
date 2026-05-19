@@ -390,12 +390,31 @@ class ChatGPTManager:
             sen_token = sen_resp.json()["token"]
             sentinel = f'{{"p": "", "t": "", "c": "{sen_token}", "id": "{did}", "flow": "authorize_continue"}}'
 
+            # 4b. Sentinel SO Token (用于 create_account 步骤)
+            sen_req_body_so = f'{{"p":"","id":"{did}","flow":"oauth_create_account"}}'
+            so_token = None
+            try:
+                sen_resp_so = s.post(
+                    "https://sentinel.openai.com/backend-api/sentinel/req",
+                    headers={
+                        "origin": "https://sentinel.openai.com",
+                        "content-type": "text/plain;charset=UTF-8",
+                    },
+                    data=sen_req_body_so,
+                    timeout=15,
+                )
+                so_token = sen_resp_so.json()["token"]
+            except Exception as e:
+                self.log(f"[!] 获取 SO sentinel token 失败 (非致命): {e}")
+
             # 5. Continue
             signup_body = f'{{"username":{{"value":"{email}","kind":"email"}},"screen_hint":"signup"}}'
             cont_resp = s.post(
                 "https://auth.openai.com/api/accounts/authorize/continue",
                 headers={
                     "openai-sentinel-token": sentinel,
+                    "referer": "https://auth.openai.com/create-account",
+                    "accept": "application/json",
                     "content-type": "application/json",
                 },
                 data=signup_body,
@@ -404,37 +423,17 @@ class ChatGPTManager:
             if cont_resp.status_code >= 400:
                 self.log(f"[!] 注册 Continue 失败响应: {cont_resp.text[:500]}")
 
-            # 6. Password
-            password = _generate_password()
-            reg_resp = s.post(
-                "https://auth.openai.com/api/accounts/user/register",
-                headers={"content-type": "application/json"},
-                data=json.dumps({"password": password, "username": email}),
-            )
-            self.log(f"[*] 密码注册状态: {reg_resp.status_code}")
-            if reg_resp.status_code >= 400:
-                self.log(f"[!] 密码注册失败响应: {reg_resp.text[:500]}")
-
-            # 7. Session Sync (模拟浏览器页面导航，保持服务端流程状态同步)
-            try:
-                s.get(
-                    "https://auth.openai.com/create-account/password",
-                    headers={
-                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "referer": "https://auth.openai.com/create-account",
-                    },
-                    timeout=10,
-                )
-            except Exception:
-                pass  # 非关键步骤，失败可忽略
-
-            # 8. Send OTP (GET 请求，不需要新的 sentinel token)
+            # 6. Send OTP (无密码流程，Continue 之后直接发送验证码)
+            otp_headers = {
+                "openai-sentinel-token": sentinel,
+                "referer": "https://auth.openai.com/create-account",
+                "accept": "application/json",
+                "content-type": "application/json",
+            }
             otp_resp = s.get(
                 "https://auth.openai.com/api/accounts/email-otp/send",
-                headers={
-                    "accept": "application/json",
-                    "referer": "https://auth.openai.com/create-account/password",
-                },
+                headers=otp_headers,
+                timeout=15,
             )
             self.log(f"[*] 发送验证码状态: {otp_resp.status_code}")
             if otp_resp.text:
@@ -460,15 +459,17 @@ class ChatGPTManager:
                 return None
             self.log(f"[+] 捕获验证码: {code}")
 
-            # 10. Validate
+            # 9. Validate (需要携带 sentinel token)
+            validate_headers = {
+                "openai-sentinel-token": sentinel,
+                "accept": "application/json",
+                "content-type": "application/json",
+                "referer": "https://auth.openai.com/email-verification",
+                "origin": "https://auth.openai.com",
+            }
             val_resp = s.post(
                 "https://auth.openai.com/api/accounts/email-otp/validate",
-                headers={
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                    "referer": "https://auth.openai.com/email-verification",
-                    "origin": "https://auth.openai.com",
-                },
+                headers=validate_headers,
                 data=json.dumps({"code": code}),
             )
             self.log(f"[*] 验证码校验状态: {val_resp.status_code}")
@@ -476,15 +477,18 @@ class ChatGPTManager:
                 self.log(f"[!] 校验失败响应: {val_resp.text}")
                 return None
 
-            # 11. Create
+            # 10. Create (需要 openai-sentinel-so-token)
+            create_headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "referer": "https://auth.openai.com/about-you",
+                "origin": "https://auth.openai.com",
+            }
+            if so_token:
+                create_headers["openai-sentinel-so-token"] = so_token
             create_resp = s.post(
                 "https://auth.openai.com/api/accounts/create_account",
-                headers={
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                    "referer": "https://auth.openai.com/about-you",
-                    "origin": "https://auth.openai.com",
-                },
+                headers=create_headers,
                 data='{"name":"Neo","birthdate":"2000-02-20"}',
             )
             self.log(f"[*] 账户创建状态: {create_resp.status_code}")
@@ -493,7 +497,7 @@ class ChatGPTManager:
                 self.log(f"[!] 账户创建失败详情: {create_resp.text}")
                 return None
 
-            # 12. 获取 Workspace ID (三重保险提取法)
+            # 11. 获取 Workspace ID (三重保险提取法)
             auth_cookie = s.cookies.get("oai-client-auth-session") or ""
             workspace_id = None
             resp_text = create_resp.text
