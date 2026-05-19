@@ -169,9 +169,19 @@ def _pkce_verifier() -> str:
     return secrets.token_urlsafe(64)
 
 
-def _generate_password(length: int = 12) -> str:
-    chars = string.ascii_letters + string.digits
-    return "".join(secrets.choice(chars) for _ in range(length))
+def _generate_password(length: int = 16) -> str:
+    special = "!@#$%^&*.-"
+    # 确保至少包含每种字符类型各一个
+    base = [
+        random.choice(string.ascii_lowercase),
+        random.choice(string.ascii_uppercase),
+        random.choice(string.digits),
+        random.choice(special),
+    ]
+    all_chars = string.ascii_letters + string.digits + special
+    base += [secrets.choice(all_chars) for _ in range(length - 4)]
+    random.shuffle(base)
+    return "".join(base)
 
 
 def _jwt_claims_no_verify(id_token: str) -> Dict[str, Any]:
