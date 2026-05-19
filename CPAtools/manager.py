@@ -415,13 +415,44 @@ class ChatGPTManager:
             if reg_resp.status_code >= 400:
                 self.log(f"[!] 密码注册失败响应: {reg_resp.text[:500]}")
 
-            # 7. Send OTP
-            otp_resp = s.get("https://auth.openai.com/api/accounts/email-otp/send")
+            # 7. Send OTP (需要重新获取 sentinel token，因为流程状态已变更)
+            sen_req_body2 = f'{{"p":"","id":"{did}","flow":"email_otp_send"}}'
+            try:
+                sen_resp2 = s.post(
+                    "https://sentinel.openai.com/backend-api/sentinel/req",
+                    headers={
+                        "origin": "https://sentinel.openai.com",
+                        "content-type": "text/plain;charset=UTF-8",
+                    },
+                    data=sen_req_body2,
+                    timeout=15,
+                )
+                sen_token2 = sen_resp2.json()["token"]
+                sentinel2 = f'{{"p": "", "t": "", "c": "{sen_token2}", "id": "{did}", "flow": "email_otp_send"}}'
+            except Exception as e:
+                self.log(f"[!] 获取 OTP sentinel token 失败: {e}")
+                return None
+
+            otp_resp = s.post(
+                "https://auth.openai.com/api/accounts/email-otp/send",
+                headers={
+                    "openai-sentinel-token": sentinel2,
+                    "content-type": "application/json",
+                    "origin": "https://auth.openai.com",
+                    "referer": "https://auth.openai.com/email-verification",
+                },
+                data="{}",
+            )
             self.log(f"[*] 发送验证码状态: {otp_resp.status_code}")
             if otp_resp.text:
                 self.log(f"[*] 发送验证码响应: {otp_resp.text[:500]}")
+            content_type = otp_resp.headers.get("content-type", "")
+            if "text/html" in content_type or otp_resp.text.lstrip().startswith("<!DOCTYPE"):
+                self.log("[!] 发送验证码未成功：接口返回的是 HTML 页面，可能是会话状态异常、重定向或风控页面。")
+                return None
             if otp_resp.status_code >= 400:
                 self.log(f"[!] 发送验证码失败响应: {otp_resp.text[:500]}")
+                return None
 
             # 8. Wait Code
             self.log("[*] 等待验证码...")
