@@ -392,7 +392,7 @@ class ChatGPTManager:
 
             # 5. Continue
             signup_body = f'{{"username":{{"value":"{email}","kind":"email"}},"screen_hint":"signup"}}'
-            s.post(
+            cont_resp = s.post(
                 "https://auth.openai.com/api/accounts/authorize/continue",
                 headers={
                     "openai-sentinel-token": sentinel,
@@ -400,17 +400,26 @@ class ChatGPTManager:
                 },
                 data=signup_body,
             )
+            self.log(f"[*] 注册 Continue 状态: {cont_resp.status_code}")
+            if cont_resp.status_code >= 400:
+                self.log(f"[!] 注册 Continue 失败响应: {cont_resp.text[:500]}")
 
             # 6. Password
             password = _generate_password()
-            s.post(
+            reg_resp = s.post(
                 "https://auth.openai.com/api/accounts/user/register",
                 headers={"content-type": "application/json"},
                 data=json.dumps({"password": password, "username": email}),
             )
+            self.log(f"[*] 密码注册状态: {reg_resp.status_code}")
+            if reg_resp.status_code >= 400:
+                self.log(f"[!] 密码注册失败响应: {reg_resp.text[:500]}")
 
             # 7. Send OTP
-            s.get("https://auth.openai.com/api/accounts/email-otp/send")
+            otp_resp = s.get("https://auth.openai.com/api/accounts/email-otp/send")
+            self.log(f"[*] 发送验证码状态: {otp_resp.status_code}")
+            if otp_resp.status_code >= 400:
+                self.log(f"[!] 发送验证码失败响应: {otp_resp.text[:500]}")
 
             # 8. Wait Code
             self.log("[*] 等待验证码...")
