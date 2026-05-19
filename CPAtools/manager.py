@@ -21,6 +21,9 @@ from urllib.parse import urlparse, parse_qs
 from dataclasses import dataclass
 
 from curl_cffi import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 INBOX_DATA = {}
 YOUR_DOMAIN = "example.com"
@@ -342,8 +345,33 @@ class ChatGPTManager:
             self.log(f"[!] 上传 Token 失败: {e}")
             return False
 
+    def _get_dynamic_proxy(self):
+        api_key = os.getenv("PROXIFLY_API_KEY")
+        if not api_key or api_key == "your_proxifly_api_key_here":
+            return self.proxy
+        
+        try:
+            self.log("[*] 正在向 Proxifly 请求新的代理 IP...")
+            # 注意: 请根据 proxifly.dev 实际的 API 端点和参数格式进行微调
+            url = f"https://api.proxifly.dev/get-proxy?apiKey={api_key}&format=text&protocol=http"
+            resp = requests.get(url, timeout=10)
+            
+            if resp.status_code == 200 and ":" in resp.text:
+                proxy_str = resp.text.strip().split('\n')[0]
+                if not proxy_str.startswith("http"):
+                    proxy_str = f"http://{proxy_str}"
+                self.log(f"[*] 成功获取 Proxifly 动态代理: {proxy_str}")
+                return proxy_str
+            else:
+                self.log(f"[!] Proxifly 返回异常 (状态码: {resp.status_code}): {resp.text[:100]}")
+        except Exception as e:
+            self.log(f"[!] 获取 Proxifly 代理失败: {e}")
+            
+        return self.proxy
+
     def register_one(self):
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
+        current_proxy = self._get_dynamic_proxy()
+        proxies = {"http": current_proxy, "https": current_proxy} if current_proxy else None
         s = requests.Session(proxies=proxies, impersonate="chrome120")
         s.headers.update({"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
 
