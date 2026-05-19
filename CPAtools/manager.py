@@ -382,9 +382,14 @@ class ChatGPTManager:
             auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
 
             # 3. 访问并获取 did
-            s.get(auth_url, timeout=15)
+            auth_resp = s.get(auth_url, timeout=15)
             did = s.cookies.get("oai-did")
             if not did:
+                self.log(f"[!] 未获取 oai-did. 状态码: {auth_resp.status_code}")
+                try:
+                    self.log(f"[*] Cookies: {dict(s.cookies)}")
+                except Exception:
+                    pass
                 return None
 
             # 4. Sentinel
