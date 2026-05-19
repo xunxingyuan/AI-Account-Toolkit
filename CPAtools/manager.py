@@ -344,7 +344,8 @@ class ChatGPTManager:
 
     def register_one(self):
         proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
-        s = requests.Session(proxies=proxies, impersonate="chrome")
+        s = requests.Session(proxies=proxies, impersonate="chrome120")
+        s.headers.update({"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
 
         email = None
         try:
@@ -392,13 +393,14 @@ class ChatGPTManager:
                 "https://sentinel.openai.com/backend-api/sentinel/req",
                 headers={
                     "origin": "https://sentinel.openai.com",
+                    "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html",
                     "content-type": "text/plain;charset=UTF-8",
                 },
                 data=sen_req_body,
                 timeout=15,
             )
             sen_token = sen_resp.json()["token"]
-            sentinel = f'{{"p": "", "t": "", "c": "{sen_token}", "id": "{did}", "flow": "authorize_continue"}}'
+            sentinel = json.dumps({"p": "", "t": "", "c": sen_token, "id": did, "flow": "authorize_continue"})
 
             # 4b. Sentinel SO Token (用于 create_account 步骤)
             sen_req_body_so = f'{{"p":"","id":"{did}","flow":"oauth_create_account"}}'
@@ -408,6 +410,7 @@ class ChatGPTManager:
                     "https://sentinel.openai.com/backend-api/sentinel/req",
                     headers={
                         "origin": "https://sentinel.openai.com",
+                        "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html",
                         "content-type": "text/plain;charset=UTF-8",
                     },
                     data=sen_req_body_so,
