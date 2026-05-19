@@ -442,6 +442,23 @@ class ChatGPTManager:
             except Exception:
                 self.log("[*] 当前 Cookies: (无法序列化，存在多域名同名cookie)")
 
+            # 5b. 访问 continue_url 推进会话状态 (服务端要求 GET)
+            try:
+                cont_data = cont_resp.json()
+                continue_url = cont_data.get("continue_url", "")
+                if continue_url:
+                    self.log(f"[*] 访问 continue_url: {continue_url}")
+                    s.get(
+                        continue_url,
+                        headers={
+                            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "referer": "https://auth.openai.com/create-account",
+                        },
+                        timeout=15,
+                    )
+            except Exception as e:
+                self.log(f"[*] 访问 continue_url 时出错 (非致命): {e}")
+
             # 6. Password (需要携带 sentinel token，完成设置密码步骤)
             password = _generate_password()
             self.log(f"[*] 生成密码: {password}")
@@ -461,7 +478,7 @@ class ChatGPTManager:
             self.log(f"[*] 密码注册状态: {reg_resp.status_code}")
             self.log(f"[*] 密码注册响应: {reg_resp.text[:500]}")
             if reg_resp.status_code >= 400:
-                self.log(f"[!] 密码注册失败，尝试检查 Continue 响应中的流程提示")
+                self.log(f"[!] 密码注册失败")
                 return None
 
             # 7. Send OTP (GET 请求，复用 register_headers 中的 sentinel token)
