@@ -351,7 +351,7 @@ class ChatGPTManager:
         try:
             # 1. 申请邮箱 (直接调用内存接口)
             email_info = {
-                "address": f"{uuid.uuid4().hex[:10]}@{YOUR_DOMAIN}",
+                "address": f"{uuid.uuid4().hex[:10]}@gmail.com",
                 "token": uuid.uuid4().hex,
             }
             email = email_info["address"]
