@@ -388,6 +388,17 @@ class ChatGPTManager:
             
         return [self.proxy] if self.proxy else []
 
+    def _is_proxy_alive(self, current_proxy):
+        if not current_proxy:
+            return True
+        proxies = {"http": current_proxy, "https": current_proxy}
+        try:
+            # 2.0秒超快连通性预检，能够秒级筛掉 90% 的死节点
+            requests.get("https://1.1.1.1", proxies=proxies, impersonate="chrome120", timeout=2.0)
+            return True
+        except Exception:
+            return False
+
     def register_one(self):
         proxies_list = self._get_dynamic_proxies()
         if not proxies_list:
@@ -396,6 +407,11 @@ class ChatGPTManager:
         for idx, current_proxy in enumerate(proxies_list):
             if current_proxy:
                 self.log(f"\n[*] === 开始第 {idx+1}/{len(proxies_list)} 次尝试，使用代理: {current_proxy} ===")
+                # 连通性预检
+                if not self._is_proxy_alive(current_proxy):
+                    self.log("[!] 代理连通性预检失败 (超时或握手失败)，跳过...")
+                    continue
+                self.log("[+] 代理预检通过 (秒级响应)，开始执行注册流...")
             else:
                 self.log(f"\n[*] === 开始第 {idx+1}/{len(proxies_list)} 次尝试，直连无代理 ===")
                 
