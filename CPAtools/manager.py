@@ -436,7 +436,11 @@ class ChatGPTManager:
                 self.log(f"[!] 注册 Continue 失败响应: {cont_resp.text[:500]}")
 
             # 打印当前 cookies 用于诊断
-            self.log(f"[*] 当前 Cookies: {dict(s.cookies)}")
+            try:
+                cookie_info = {c.name: c.value for c in s.cookies.jar}
+                self.log(f"[*] 当前 Cookies: {cookie_info}")
+            except Exception:
+                self.log("[*] 当前 Cookies: (无法序列化，存在多域名同名cookie)")
 
             # 6. Password (需要携带 sentinel token，完成设置密码步骤)
             password = _generate_password()
