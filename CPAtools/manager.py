@@ -415,34 +415,26 @@ class ChatGPTManager:
             if reg_resp.status_code >= 400:
                 self.log(f"[!] 密码注册失败响应: {reg_resp.text[:500]}")
 
-            # 7. Send OTP (需要重新获取 sentinel token，因为流程状态已变更)
-            sen_req_body2 = f'{{"p":"","id":"{did}","flow":"email_otp_send"}}'
+            # 7. Session Sync (模拟浏览器页面导航，保持服务端流程状态同步)
             try:
-                sen_resp2 = s.post(
-                    "https://sentinel.openai.com/backend-api/sentinel/req",
+                s.get(
+                    "https://auth.openai.com/create-account/password",
                     headers={
-                        "origin": "https://sentinel.openai.com",
-                        "content-type": "text/plain;charset=UTF-8",
+                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "referer": "https://auth.openai.com/create-account",
                     },
-                    data=sen_req_body2,
-                    timeout=15,
+                    timeout=10,
                 )
-                sen_token2 = sen_resp2.json()["token"]
-                sentinel2 = f'{{"p": "", "t": "", "c": "{sen_token2}", "id": "{did}", "flow": "email_otp_send"}}'
-            except Exception as e:
-                self.log(f"[!] 获取 OTP sentinel token 失败: {e}")
-                return None
+            except Exception:
+                pass  # 非关键步骤，失败可忽略
 
-            otp_resp = s.post(
+            # 8. Send OTP (GET 请求，不需要新的 sentinel token)
+            otp_resp = s.get(
                 "https://auth.openai.com/api/accounts/email-otp/send",
                 headers={
                     "accept": "application/json",
-                    "openai-sentinel-token": sentinel2,
-                    "content-type": "application/json",
-                    "origin": "https://auth.openai.com",
-                    "referer": "https://auth.openai.com/email-verification",
+                    "referer": "https://auth.openai.com/create-account/password",
                 },
-                data="{}",
             )
             self.log(f"[*] 发送验证码状态: {otp_resp.status_code}")
             if otp_resp.text:
@@ -455,7 +447,7 @@ class ChatGPTManager:
                 self.log(f"[!] 发送验证码失败响应: {otp_resp.text[:500]}")
                 return None
 
-            # 8. Wait Code
+            # 9. Wait Code
             self.log("[*] 等待验证码...")
             code = None
             for _ in range(30):
@@ -468,7 +460,7 @@ class ChatGPTManager:
                 return None
             self.log(f"[+] 捕获验证码: {code}")
 
-            # 9. Validate
+            # 10. Validate
             val_resp = s.post(
                 "https://auth.openai.com/api/accounts/email-otp/validate",
                 headers={
@@ -484,7 +476,7 @@ class ChatGPTManager:
                 self.log(f"[!] 校验失败响应: {val_resp.text}")
                 return None
 
-            # 10. Create
+            # 11. Create
             create_resp = s.post(
                 "https://auth.openai.com/api/accounts/create_account",
                 headers={
@@ -501,7 +493,7 @@ class ChatGPTManager:
                 self.log(f"[!] 账户创建失败详情: {create_resp.text}")
                 return None
 
-            # 11. 获取 Workspace ID (三重保险提取法)
+            # 12. 获取 Workspace ID (三重保险提取法)
             auth_cookie = s.cookies.get("oai-client-auth-session") or ""
             workspace_id = None
             resp_text = create_resp.text
